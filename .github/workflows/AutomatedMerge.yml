@@ -1,0 +1,40 @@
+name: Automated Merging between branches
+
+on: 
+    pull_request: 
+        branches: 
+            - merge
+        types: 
+            - closed
+
+jobs:
+    merge_and_tag:
+        if: github.event.pull_request.merged == true
+        runs-on: ubuntu-latest
+
+        steps:
+            # Hace el checkout del repositorio para bajar el código de todas las ramas
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            # Obtiene las credenciales del autor del PR para poder asignarselas a los commits del workflow
+            - name: Set up Git User with PR author details
+              run: |
+                git config user.name "${{ github.event.pull_request.user.login }}"
+                git config user.email "${{ github.event.pull_request.user.email }}"
+
+            - name: Merge into release
+              env:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                git checkout release
+                git merge --no-ff merge -m "Mergin into release"
+                git push origin release
+                
+            - name: Generate version
+              id: version
+              run: echo "::set-output name=VERSION::$(date +'%Y%m%d%H%M%S')"
+              
+
+            
