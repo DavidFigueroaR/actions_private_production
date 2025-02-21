@@ -36,5 +36,35 @@ jobs:
               id: version
               run: echo "::set-output name=VERSION::$(date +'%Y%m%d%H%M%S')"
               
+            - name: Create tag for new version
+              env:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} #en los secrets se guardan variables para que no estén expuestas en el flujo de trabajo
+              run: |
+                git tag ${{ steps.version.outputs.VERSION }}
+                git push origin ${{ steps.version.outputs.VERSION }}
+      
+            - name: Checkout main branch
+              env:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                git checkout main
+                git pull origin main
+      
+            - name: Merge release into main and push
+              id: push_to_main
+              run: |
+                git merge --no-ff release -m "Syncing release with main"
+                git push origin main || exit 1
+      
+            - name: Create Pull Request from release to main if push fails
+              if: failure()
+              uses: peter-evans/create-pull-request@v5
+              with:
+                token: ${{ secrets.GITHUB_TOKEN }}
+                branch: release
+                base: main
+                title: 'Sync release with main'
+                body: 'Automated pull request to sync release branch with main.'
+                labels: 'automated-pull-request'
 
             
