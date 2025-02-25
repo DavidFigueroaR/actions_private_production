@@ -50,14 +50,14 @@ jobs:
                 git checkout main
                 git pull origin main
       
-            - name: Merge release into main and push
-              id: push_to_main
-              run: |
-                git merge --no-ff release -m "Syncing release with main"
-                git push origin main || exit 1
+            # - name: Merge release into main and push
+            #   id: push_to_main
+            #   run: |
+            #     git merge --no-ff release -m "Syncing release with main"
+            #     git push origin main || exit 1
       
             - name: Create Pull Request from release to main if push fails
-              if: failure()
+              # if: failure()
               uses: peter-evans/create-pull-request@v5
               with:
                 token: ${{ secrets.GITHUB_TOKEN }}
