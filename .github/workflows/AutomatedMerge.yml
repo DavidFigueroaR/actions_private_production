@@ -56,8 +56,7 @@ jobs:
             #     git merge --no-ff release -m "Syncing release with main"
             #     git push origin main || exit 1
       
-            - name: Create Pull Request from release to main if push fails
-              # if: failure()
+            - name: Create Pull Request from release to main
               uses: peter-evans/create-pull-request@v5
               with:
                 token: ${{ secrets.GITHUB_TOKEN }}
