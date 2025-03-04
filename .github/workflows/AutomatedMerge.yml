@@ -18,41 +18,67 @@ jobs:
               uses: actions/checkout@v4
               with:
                   fetch-depth: 0
+
             # Obtiene las credenciales del autor del PR para poder asignarselas a los commits del workflow
             - name: Set up Git User with PR author details
               run: |
                 git config user.name "${{ github.event.pull_request.user.login }}"
                 git config user.email "${{ github.event.pull_request.user.email }}"
 
-            - name: Merge into release
+            # Actualiza la rama release antes de fusionar
+            - name: Update release branch
+              env:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                git fetch origin release
+                git checkout release
+                git pull origin release
+
+            # Fusiona merge en release
+            - name: Merge merge into release
               env:
                 GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                 git checkout release
-                git merge --no-ff merge -m "Mergin into release"
+                git merge --no-ff merge -m "Merging merge into release"
                 git push origin release
                 
+            # Genera una versión basada en la fecha y hora actual
             - name: Generate version
               id: version
               run: echo "::set-output name=VERSION::$(date +'%Y%m%d%H%M%S')"
               
+            # Crea un tag para la nueva versión
             - name: Create tag for new version
               env:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} #en los secrets se guardan variables para que no estén expuestas en el flujo de trabajo
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                 git tag ${{ steps.version.outputs.VERSION }}
                 git push origin ${{ steps.version.outputs.VERSION }}
       
+            # Actualiza la rama main
             - name: Checkout main branch
               env:
                 GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                 git checkout main
                 git pull origin main
-                
+
+            # Verifica si hay diferencias entre release y main
+            - name: Check for differences between release and main
+              id: check-diff
+              run: |
+                git fetch origin release
+                if [ $(git rev-list --count main..release) -gt 0 ]; then
+                  echo "::set-output name=has_diff::true"
+                else
+                  echo "::set-output name=has_diff::false"
+                fi
+
+            # Crea un PR de release a main si hay diferencias
             - name: Create Pull Request from release to main
-              if: github.event.pull_request.merged == true
-              uses: peter-evans/create-pull-request@v5
+              if: steps.check-diff.outputs.has_diff == 'true'
+              uses: peter-evans/create-pull-request@v7
               with:
                 token: ${{ secrets.GITHUB_TOKEN }}
                 branch: release
@@ -60,4 +86,5 @@ jobs:
                 title: 'Sync release with main'
                 body: 'Automated pull request to sync release branch with main.'
                 labels: 'automated-pull-request'
-            
+              env:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
