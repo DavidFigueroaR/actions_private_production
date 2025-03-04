@@ -25,14 +25,15 @@ jobs:
                 git config user.name "${{ github.event.pull_request.user.login }}"
                 git config user.email "${{ github.event.pull_request.user.email }}"
 
-            # Actualiza la rama release antes de fusionar
-            - name: Update release branch
+            # Actualiza la rama release con los últimos cambios de main
+            - name: Update release branch with main
               env:
                 GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                git fetch origin release
+                git fetch origin main
                 git checkout release
-                git pull origin release
+                git merge --no-ff main -m "Update release with main"
+                git push origin release
 
             # Fusiona merge en release
             - name: Merge merge into release
