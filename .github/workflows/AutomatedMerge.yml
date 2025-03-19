@@ -75,7 +75,7 @@ jobs:
 
       # Crea un PR de release a main si hay diferencias
       - name: Create Pull Request from release to main
-        if: steps.check-diff.outputs.has_diff == 'true'
+        #if: steps.check-diff.outputs.has_diff == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
