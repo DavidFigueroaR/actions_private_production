@@ -1,0 +1,56 @@
+name: Deploy Python App to AWS ECS
+
+on:
+  push:
+    branches:
+      - main  # Cambia esto a la rama que desees desplegar
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Paso 1: Checkout del código
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # Paso 2: Configurar Docker Buildx
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    # Paso 3: Autenticar en AWS ECR
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    # Paso 4: Construir la imagen de Docker
+    - name: Build Docker image
+      run: docker build -t mi-proyecto-python:$GITHUB_SHA .
+
+    # Paso 5: Etiquetar la imagen de Docker
+    - name: Tag Docker image
+      run: |
+        docker tag mi-proyecto-python:$GITHUB_SHA ${{ secrets.AWS_ECR_REPOSITORY }}:latest
+        docker tag mi-proyecto-python:$GITHUB_SHA ${{ secrets.AWS_ECR_REPOSITORY }}:$GITHUB_SHA
+
+    # Paso 6: Subir la imagen a Amazon ECR
+    - name: Push Docker image to Amazon ECR
+      run: |
+        docker push ${{ secrets.AWS_ECR_REPOSITORY }}:latest
+        docker push ${{ secrets.AWS_ECR_REPOSITORY }}:$GITHUB_SHA
+
+    # Paso 7: Configurar credenciales de AWS
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    # Paso 8: Actualizar el servicio de ECS
+    - name: Deploy to ECS
+      run: |
+        aws ecs update-service \
+          --cluster ${{ secrets.AWS_ECS_CLUSTER }} \
+          --service ${{ secrets.AWS_ECS_SERVICE }} \
+          --force-new-deployment
