@@ -25,12 +25,17 @@ jobs:
                 git config user.name "${{ github.event.pull_request.user.login }}"
                 git config user.email "${{ github.event.pull_request.user.email }}"
 
+            # Actualiza las ramas main y merge
+            - name: Fetch all branches
+              run: |
+                git fetch origin main
+                git fetch origin merge
+
             # Verifica si merge tiene cambios que no están en main
             - name: Check for differences between merge and main
               id: check-merge-diff
               run: |
-                git fetch origin main
-                if [ $(git rev-list --count main..merge) -gt 0 ]; then
+                if [ $(git rev-list --count origin/main..origin/merge) -gt 0 ]; then
                   echo "has_diff=true" >> $GITHUB_OUTPUT
                 else
                   echo "has_diff=false" >> $GITHUB_OUTPUT
@@ -43,7 +48,7 @@ jobs:
                 GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                 git checkout release
-                git merge --no-ff merge -m "Merging merge into release"
+                git merge --no-ff origin/merge -m "Merging merge into release"
                 git push origin release
                 
             # Genera una versión basada en la fecha y hora actual
@@ -72,7 +77,7 @@ jobs:
               id: check-diff
               run: |
                 git fetch origin release
-                if [ $(git rev-list --count main..release) -gt 0 ]; then
+                if [ $(git rev-list --count origin/main..origin/release) -gt 0 ]; then
                   echo "has_diff=true" >> $GITHUB_OUTPUT
                 else
                   echo "has_diff=false" >> $GITHUB_OUTPUT
