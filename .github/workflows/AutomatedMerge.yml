@@ -1,98 +1,66 @@
-name: Automated Merging between branches
+name: Merge to Release and Main
 
-on: 
-    pull_request: 
-        branches: 
-            - merge
-        types: 
-            - closed
+on:
+  pull_request:
+    branches:
+      - merge
+    types:
+      - closed
 
 jobs:
-    merge_and_tag:
-        if: github.event.pull_request.merged == true
-        runs-on: ubuntu-latest
+  merge_and_tag:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 #es para poder trackear todas las ramas del repositorio
 
-        steps:
-            # Hace el checkout del repositorio para bajar el código de todas las ramas
-            - name: Checkout code
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
+      - name: Set up Git user with PR author details
+        run: |
+          git config user.name "${{ github.event.pull_request.user.login }}"
+          git config user.email "${{ github.event.pull_request.user.email }}"
 
-            # Obtiene las credenciales del autor del PR para poder asignarselas a los commits del workflow
-            - name: Set up Git User with PR author details
-              run: |
-                git config user.name "${{ github.event.pull_request.user.login }}"
-                git config user.email "${{ github.event.pull_request.user.email }}"
+      - name: Merge into release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} #el token es para que se pueda autorizar hacer cambios en las ramas
+        run: |
+          git checkout release
+          git merge --no-ff merge -m "Merging merge into release"
+          git push origin release
 
-            # Actualiza las ramas main y merge
-            - name: Fetch all branches
-              run: |
-                git fetch origin main
-                git fetch origin merge
+      - name: Generate version
+        id: version
+        run: echo "::set-output name=VERSION::$(date +'%Y%m%d%H%M%S')"
+        
+      - name: Create tag for new version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} #en los secrets se guardan variables para que no estén expuestas en el flujo de trabajo
+        run: |
+          git tag ${{ steps.version.outputs.VERSION }}
+          git push origin ${{ steps.version.outputs.VERSION }}
 
-            # Verifica si merge tiene cambios que no están en main
-            - name: Check for differences between merge and main
-              id: check-merge-diff
-              run: |
-                if [ $(git rev-list --count origin/main..origin/merge) -gt 0 ]; then
-                  echo "has_diff=true" >> $GITHUB_OUTPUT
-                else
-                  echo "has_diff=false" >> $GITHUB_OUTPUT
-                fi
+      - name: Checkout main branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git checkout main
+          git pull origin main
 
-            # Si hay diferencias, fusiona merge en release
-            - name: Merge merge into release
-              if: steps.check-merge-diff.outputs.has_diff == 'true'
-              env:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                git checkout release
-                git merge --no-ff origin/merge -m "Merging merge into release"
-                git push origin release
-                
-            # Genera una versión basada en la fecha y hora actual
-            - name: Generate version
-              id: version
-              run: echo "VERSION=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_OUTPUT
+      - name: Merge release into main and push
+        id: push_to_main
+        run: |
+          git merge --no-ff release -m "Syncing release with main"
+          git push origin main || exit 1
 
-            # Crea un tag para la nueva versión
-            - name: Create tag for new version
-              env:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                git tag ${{ steps.version.outputs.VERSION }}
-                git push origin ${{ steps.version.outputs.VERSION }}
-      
-            # Actualiza la rama main
-            - name: Checkout main branch
-              env:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                git checkout main
-                git pull origin main
-
-            # Verifica si hay diferencias entre release y main
-            - name: Check for differences between release and main
-              id: check-diff
-              run: |
-                git fetch origin release
-                if [ $(git rev-list --count origin/main..origin/release) -gt 0 ]; then
-                  echo "has_diff=true" >> $GITHUB_OUTPUT
-                else
-                  echo "has_diff=false" >> $GITHUB_OUTPUT
-                fi
-
-            # Crea un PR de release a main si hay diferencias
-            - name: Create Pull Request from release to main
-              if: steps.check-diff.outputs.has_diff == 'true'
-              uses: peter-evans/create-pull-request@v7
-              with:
-                token: ${{ secrets.GITHUB_TOKEN }}
-                branch: release
-                base: main
-                title: 'Sync release with main'
-                body: 'Automated pull request to sync release branch with main.'
-                labels: 'automated-pull-request'
-              env:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Pull Request from release to main if push fails
+        if: failure()
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: release
+          base: main
+          title: 'Sync release with main'
+          body: 'Automated pull request to sync release branch with main.'
+          labels: 'automated-pull-request'
