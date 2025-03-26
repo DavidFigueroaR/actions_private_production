@@ -3,7 +3,7 @@ name: Deploy Python App to AWS ECS
 on:
   push:
     branches:
-      - main  # Cambia esto a la rama que desees desplegar
+      - main
 
 jobs:
   build-and-deploy:

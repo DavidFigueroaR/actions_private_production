@@ -1,60 +1,46 @@
-name: Automated Merging between branches
+name: Merge to Release and Main
 
-on: 
-  pull_request: 
-    branches: 
+on:
+  pull_request:
+    branches:
       - merge
-    types: 
+    types:
       - closed
 
 jobs:
   merge_and_tag:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-
     steps:
-      # Hace el checkout del repositorio para bajar el código de todas las ramas
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 #es para poder trackear todas las ramas del repositorio
 
-      # Obtiene las credenciales del autor del PR para poder asignárselas a los commits del workflow
-      - name: Set up Git User with PR author details
+      - name: Set up Git user with PR author details
         run: |
           git config user.name "${{ github.event.pull_request.user.login }}"
           git config user.email "${{ github.event.pull_request.user.email }}"
 
-      # Asegurar que merge y release están actualizadas antes de la fusión
-      - name: Merge merge into release
+      - name: Merge into release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} #el token es para que se pueda autorizar hacer cambios en las ramas
         run: |
-          git checkout merge
-          git pull origin merge
           git checkout release
-          git pull origin release
-          git merge merge
+          git merge --no-ff merge -m "Merging merge into release"
           git push origin release
 
-      # Genera una versión basada en la fecha y hora actual
       - name: Generate version
         id: version
-        run: echo "VERSION=v$(date +'%Y%m%d%H%M%S')" >> $GITHUB_ENV
-
-      # Crea un tag para la nueva versión (evita duplicados)
+        run: echo "::set-output name=VERSION::$(date +'%Y%m%d%H%M%S')"
+        
       - name: Create tag for new version
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} #en los secrets se guardan variables para que no estén expuestas en el flujo de trabajo
         run: |
-          if git rev-parse "$VERSION" >/dev/null 2>&1; then
-            echo "Tag $VERSION already exists, skipping..."
-          else
-            git tag $VERSION
-            git push origin $VERSION
-          fi
+          git tag ${{ steps.version.outputs.VERSION }}
+          git push origin ${{ steps.version.outputs.VERSION }}
 
-      # Actualiza la rama main
       - name: Checkout main branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -62,21 +48,15 @@ jobs:
           git checkout main
           git pull origin main
 
-      # Verifica si hay diferencias entre release y main
-      - name: Check for differences between release and main
-        id: check-diff
+      - name: Merge release into main and push
+        id: push_to_main
         run: |
-          git fetch origin release main
-          if git diff --quiet origin/main..origin/release; then
-            echo "has_diff=false" >> $GITHUB_ENV
-          else
-            echo "has_diff=true" >> $GITHUB_ENV
-          fi
+          git merge --no-ff release -m "Syncing release with main"
+          git push origin main || exit 1
 
-      # Crea un PR de release a main si hay diferencias
-      - name: Create Pull Request from release to main
-        #if: steps.check-diff.outputs.has_diff == 'true'
-        uses: peter-evans/create-pull-request@v7
+      - name: Create Pull Request from release to main if push fails
+        if: failure()
+        uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: release
